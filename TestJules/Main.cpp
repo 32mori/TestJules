@@ -1,4 +1,4 @@
-# include <Siv3D.hpp> // Siv3D v0.6.16
+﻿# include <Siv3D.hpp> // Siv3D v0.6.16
 
 // ゲームの状態を管理するための列挙型
 enum class GameState
