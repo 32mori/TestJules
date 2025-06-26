@@ -32,10 +32,25 @@ struct Obstacle
 	s3d::RectF rect; // 障害物の形状と位置
 
 	// 定数
-	static constexpr double SPEED = 200.0;      // 移動速度
+	static constexpr double SPEED = 200.0;      // 初期移動速度
 	static constexpr double SPAWN_INTERVAL = 2.0; // 出現間隔
 	static constexpr double WIDTH = 30.0;       // 幅
 };
+
+// 連結障害物関連の定数
+constexpr double CONJOINED_OBSTACLE_CHANCE = 0.3; // 連結障害物の出現確率 (30%)
+constexpr int MIN_CONJOINED_COUNT = 2;          // 連結する最小個数
+constexpr int MAX_CONJOINED_COUNT = 3;          // 連結する最大個数
+constexpr double SMALL_OBSTACLE_MIN_HEIGHT = 40.0;
+constexpr double SMALL_OBSTACLE_MAX_HEIGHT = 70.0;
+constexpr double LARGE_OBSTACLE_MIN_HEIGHT = 90.0;
+constexpr double LARGE_OBSTACLE_MAX_HEIGHT = 120.0;
+// 連結障害物間のX方向の隙間
+constexpr double CONJOINED_OBSTACLE_X_GAP = Obstacle::WIDTH * 0.8;
+// 右肩上がりのためのY座標オフセットステップ（次の障害物が前の障害物よりどれだけ高い位置に底辺が来るか）
+constexpr double CONJOINED_OBSTACLE_Y_OFFSET_STEP = 15.0;
+// 画面上部のマージン（障害物がこれより上にはみ出さないようにするための基準）
+constexpr double SCREEN_TOP_MARGIN = 20.0;
 
 
 // プレイヤー関連の変数を初期化する関数
@@ -105,23 +120,74 @@ void updatePlayer(Player& player, double gravity, double groundY, double sceneWi
 }
 
 // 障害物を生成・更新する関数
-void updateObstacles(s3d::Array<Obstacle>& obstacles, double& timeSinceLastSpawn, double groundY, double sceneWidth, const double deltaTime)
+// currentSpeed 引数を追加
+void updateObstacles(s3d::Array<Obstacle>& obstacles, double& timeSinceLastSpawn, double groundY, double sceneWidth, double currentSpeed, const double deltaTime)
 {
 	timeSinceLastSpawn += deltaTime;
 	if (timeSinceLastSpawn >= Obstacle::SPAWN_INTERVAL)
 	{
 		timeSinceLastSpawn = 0.0; // タイマーリセット
-		// 障害物の高さをランダムに決定 (例: 50から150の間)
-		const double obstacleHeight = s3d::Random(50.0, 150.0);
-		// 障害物のY座標を決定 (地面から生える形)
-		const double obstacleY = groundY - obstacleHeight;
-		obstacles.push_back(Obstacle{ s3d::RectF{sceneWidth, obstacleY, Obstacle::WIDTH, obstacleHeight} });
+
+		// 連結障害物を生成するかどうか
+		if (s3d::RandomBool(CONJOINED_OBSTACLE_CHANCE))
+		{
+			// 連結障害物を生成
+			const int count = s3d::Random(MIN_CONJOINED_COUNT, MAX_CONJOINED_COUNT);
+			double currentX = sceneWidth; // 最初の障害物のX座標
+			bool isSmallNext = s3d::RandomBool(); // 最初が小さい障害物か
+
+			for (int i = 0; i < count; ++i)
+			{
+				double obstacleHeight;
+				if (isSmallNext) {
+					obstacleHeight = s3d::Random(SMALL_OBSTACLE_MIN_HEIGHT, SMALL_OBSTACLE_MAX_HEIGHT);
+				}
+				else {
+					obstacleHeight = s3d::Random(LARGE_OBSTACLE_MIN_HEIGHT, LARGE_OBSTACLE_MAX_HEIGHT);
+				}
+
+				// 「右肩上がり」の配置ロジック:
+				// i (連結内の障害物のインデックス) が増えるほど、障害物の底辺のY座標を上昇させる。
+				// これにより、見た目上、障害物群が右に進むにつれて上方向に伸びていくように見える。
+				const double yPositionBottom = groundY - (i * CONJOINED_OBSTACLE_Y_OFFSET_STEP);
+				// 障害物のrect.y（上端のY座標）を計算
+				const double obstacleY = yPositionBottom - obstacleHeight;
+
+				// Y座標が画面上部マージンより上に行かないように制限
+				const double finalObstacleY = s3d::Max(obstacleY, SCREEN_TOP_MARGIN);
+				// Y座標が制限された場合、障害物の高さも調整して底辺の位置を維持する
+				const double finalObstacleHeight = yPositionBottom - finalObstacleY;
+
+				// 調整後の高さが極端に小さい場合（例: 元の最小高さの半分未満）は、この障害物の生成をスキップ
+				if (finalObstacleHeight < (SMALL_OBSTACLE_MIN_HEIGHT / 2.0))
+				{
+					// X座標だけは進めておく（次の障害物が重ならないように）
+					currentX += Obstacle::WIDTH + CONJOINED_OBSTACLE_X_GAP;
+					isSmallNext = !isSmallNext; // 大小の切り替えは行う
+					continue;
+				}
+
+				obstacles.push_back(Obstacle{ s3d::RectF{currentX, finalObstacleY, Obstacle::WIDTH, finalObstacleHeight} });
+
+				currentX += Obstacle::WIDTH + CONJOINED_OBSTACLE_X_GAP; // 次の障害物のX座標を設定
+				isSmallNext = !isSmallNext; // 次の障害物の大小タイプを切り替える
+			}
+		}
+		else
+		{
+			// 通常の単体障害物を生成
+			// 高さのランダム範囲は、連結障害物で定義した小さい方の最小から大きい方の最大までとする
+			// これにより、単体でも多様な高さの障害物が出現する
+			const double obstacleHeight = s3d::Random(SMALL_OBSTACLE_MIN_HEIGHT, LARGE_OBSTACLE_MAX_HEIGHT);
+			const double obstacleY = groundY - obstacleHeight; // 地面から生える形
+			obstacles.push_back(Obstacle{ s3d::RectF{sceneWidth, obstacleY, Obstacle::WIDTH, obstacleHeight} });
+		}
 	}
 
-	// 障害物を移動
+	// 障害物を移動 (currentSpeed を使用)
 	for (auto& obs : obstacles)
 	{
-		obs.rect.x -= Obstacle::SPEED * deltaTime;
+		obs.rect.x -= currentSpeed * deltaTime;
 	}
 
 	// 画面外に出た障害物を削除
@@ -172,7 +238,8 @@ void drawGame(const Player& player, const s3d::Array<Obstacle>& obstacles, doubl
 	{
 		if (player.isInvincible)
 		{
-			if (s3d::System::FrameCount() % 10 < 5) // 無敵中は点滅
+			// 無敵中は点滅 (0.2秒周期で0.1秒表示)
+			if (fmod(s3d::Scene::Time(), 0.2) < 0.1)
 			{
 				player.circle.draw(s3d::Palette::Orange);
 			}
@@ -186,7 +253,7 @@ void drawGame(const Player& player, const s3d::Array<Obstacle>& obstacles, doubl
 	{
 		// ゲームオーバー時は常に表示 (または点滅させても良い)
 		// 例えば、ゲームオーバー時も点滅させるなら以下のようにする
-		// if (s3d::System::FrameCount() % 10 < 5) {
+		// if (fmod(s3d::Scene::Time(), 0.2) < 0.1) { // 点滅させる場合の例
 		//    player.circle.draw(s3d::Palette::Orange);
 		// }
 		player.circle.draw(s3d::Palette::Orange); // ここでは常に表示
@@ -241,6 +308,11 @@ void Main()
 	// 障害物関連
 	s3d::Array<Obstacle> obstacles;          // 障害物リスト
 	double timeSinceLastSpawn = 0.0;         // 前回の障害物出現からの経過時間
+	double currentObstacleSpeed = Obstacle::SPEED; // 現在の障害物速度
+	const double maxObstacleSpeed = Obstacle::SPEED * 1.3; // 障害物の最大速度
+	// 速度上昇の係数。スコアが増えるほど速度が上がる。
+	// 例えばスコア60 (約60秒) で (1.0 + 60 * 0.005) = 1.3倍 となり、最大速度に達する。
+	const double speedIncreaseFactor = 0.005;
 
 	// ゲームの状態
 	GameState gameState = GameState::Playing; // 初期状態はプレイ中
@@ -254,9 +326,12 @@ void Main()
 		{
 			score += deltaTime; // スコアを加算
 
+			// 障害物速度の更新
+			currentObstacleSpeed = s3d::Min(Obstacle::SPEED * (1.0 + score * speedIncreaseFactor), maxObstacleSpeed);
+
 			// 各コンポーネントの更新
 			updatePlayer(player, gravity, groundY, sceneWidth, deltaTime);
-			updateObstacles(obstacles, timeSinceLastSpawn, groundY, sceneWidth, deltaTime);
+			updateObstacles(obstacles, timeSinceLastSpawn, groundY, sceneWidth, currentObstacleSpeed, deltaTime); // currentObstacleSpeed を渡す
 			handleCollisions(player, obstacles, gameState, finalScore, score, groundY, timeSinceLastSpawn);
 		}
 		else if (gameState == GameState::GameOver)
@@ -270,6 +345,7 @@ void Main()
 				finalScore = 0.0;
 				obstacles.clear();
 				timeSinceLastSpawn = 0.0; // 障害物出現タイミングもリセット
+				currentObstacleSpeed = Obstacle::SPEED; // 障害物速度もリセット
 				gameState = GameState::Playing; // プレイ状態に戻す
 			}
 		}
