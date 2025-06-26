@@ -172,7 +172,8 @@ void drawGame(const Player& player, const s3d::Array<Obstacle>& obstacles, doubl
 	{
 		if (player.isInvincible)
 		{
-			if (s3d::System::FrameCount() % 10 < 5) // 無敵中は点滅
+			// 無敵中は点滅 (0.2秒周期で0.1秒表示)
+			if (fmod(s3d::Scene::Time(), 0.2) < 0.1)
 			{
 				player.circle.draw(s3d::Palette::Orange);
 			}
@@ -186,7 +187,7 @@ void drawGame(const Player& player, const s3d::Array<Obstacle>& obstacles, doubl
 	{
 		// ゲームオーバー時は常に表示 (または点滅させても良い)
 		// 例えば、ゲームオーバー時も点滅させるなら以下のようにする
-		// if (s3d::System::FrameCount() % 10 < 5) {
+		// if (fmod(s3d::Scene::Time(), 0.2) < 0.1) { // 点滅させる場合の例
 		//    player.circle.draw(s3d::Palette::Orange);
 		// }
 		player.circle.draw(s3d::Palette::Orange); // ここでは常に表示
