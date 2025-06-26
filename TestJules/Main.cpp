@@ -168,7 +168,6 @@ void drawGame(const Player& player, const s3d::Array<Obstacle>& obstacles, doubl
 	s3d::RectF{ 0, groundY, sceneWidth, sceneHeight - groundY }.draw(s3d::Palette::Lightgreen);
 
 	// プレイヤーを描画
-	// ゲームオーバー時でも点滅させたい場合は条件を調整 (現在は Playing 中の無敵時のみ点滅)
 	if (gameState == GameState::Playing)
 	{
 		if (player.isInvincible)
@@ -183,9 +182,14 @@ void drawGame(const Player& player, const s3d::Array<Obstacle>& obstacles, doubl
 			player.circle.draw(s3d::Palette::Orange);
 		}
 	}
-	else if (gameState == GameState::GameOver) // ゲームオーバー時は常に表示 (または点滅させても良い)
+	else if (gameState == GameState::GameOver)
 	{
-		player.circle.draw(s3d::Palette::Orange);
+		// ゲームオーバー時は常に表示 (または点滅させても良い)
+		// 例えば、ゲームオーバー時も点滅させるなら以下のようにする
+		// if (s3d::System::FrameCount() % 10 < 5) {
+		//    player.circle.draw(s3d::Palette::Orange);
+		// }
+		player.circle.draw(s3d::Palette::Orange); // ここでは常に表示
 	}
 
 
@@ -203,9 +207,9 @@ void drawGame(const Player& player, const s3d::Array<Obstacle>& obstacles, doubl
 	if (gameState == GameState::GameOver)
 	{
 		// 画面中央にゲームオーバー関連のテキストを表示
-		gameOverFont.drawAt(U"Game Over", s3d::Vec2{ sceneWidth / 2, sceneHeight / 2 - 30 }, s3d::Palette::Black);
-		font.drawAt(U"Final Score: {:.1f}"_fmt(finalScore), s3d::Vec2{ sceneWidth / 2, sceneHeight / 2 + 30 }, s3d::Palette::Black);
-		font.drawAt(U"Press 'R' to Restart", s3d::Vec2{ sceneWidth / 2, sceneHeight / 2 + 70 }, s3d::Palette::Darkgray);
+		gameOverFont(U"Game Over").drawAt(s3d::Vec2{ sceneWidth / 2, sceneHeight / 2 - 30 }, s3d::Palette::Black);
+		font(U"Final Score: {:.1f}"_fmt(finalScore)).drawAt(s3d::Vec2{ sceneWidth / 2, sceneHeight / 2 + 30 }, s3d::Palette::Black);
+		font(U"Press 'R' to Restart").drawAt(s3d::Vec2{ sceneWidth / 2, sceneHeight / 2 + 70 }, s3d::Palette::Darkgray);
 	}
 }
 
